@@ -13,7 +13,7 @@ Personally, I have never used ".c" language before in my life, so most of the co
 You can move your mouse by typing one of the letter pairs displayed on the overlay and then you have a few choices.
 1) Press Spacebar to move in a middle of the cell and click
 2) Press Return(Enter) to move in a middle of the cell without a click
-3) Press Any of the main keyboard keys without a middle row for a better precision inside the cell.
+3) Press Any of the main keyboard keys excluding two middle rows for a better precision inside the cell.
 
 Also there are a few modificators:
 1) Holding ALT will use right click
