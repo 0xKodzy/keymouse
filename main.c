@@ -21,10 +21,10 @@
 #define SUBGRID_WIDTH 8
 #define SUBGRID_HEIGHT 3
 #define LETTERS "abcdefghijklmnopqrstuvwxyz"
-int subs[24] = {
-    24, 25, 26, 27, 30, 31, 32, 33,
-    38, 39, 40, 41, 44, 45, 46, 47,
-    52, 53, 54, 55, 58, 59, 60, 61};
+int subs[24] = { // Keyboard keys that allow for subgrid selection (better precision)
+    24, 25, 26, 27,   30, 31, 32, 33,
+    38, 39, 40, 41,   44, 45, 46, 47,
+    52, 53, 54, 55,   58, 59, 60, 61};
 
 int SHIFT_MOD = 0;
 int CTRL_MOD = 0;
@@ -104,10 +104,8 @@ void draw_grid(Display *display, Window window, int width, int height, XVisualIn
         return;
     }
 
-    // int cellWidth = (width - 1) / 26;
-    // int cellHeight = (height - 1) / 26;
-    int cellWidth = width / GRID_SIZE;
-    int cellHeight = height / GRID_SIZE;
+    double cellWidth = (double)(width) / GRID_SIZE;
+    double cellHeight = (double)(height) / GRID_SIZE;
     for (int row = 0; row < GRID_SIZE; row++)
     {
         for (int col = 0; col < GRID_SIZE; col++)
@@ -118,7 +116,7 @@ void draw_grid(Display *display, Window window, int width, int height, XVisualIn
             XGlyphInfo extents;
             XftTextExtents8(display, xftFont, (FcChar8 *)label, 2, &extents);
             // Center the text horizontally and vertically using extents metrics.
-            int textX = x + (cellWidth - extents.width) / 2 - extents.x;
+            int textX = x + (cellWidth - extents.width) / 2;
             int textY = y + (cellHeight - (xftFont->ascent + xftFont->descent)) / 2 + xftFont->ascent;
             XftDrawString8(draw, &color, xftFont, textX, textY, (FcChar8 *)label, 2);
         }
