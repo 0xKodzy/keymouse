@@ -15,6 +15,8 @@ You can move your mouse by typing one of the letter pairs displayed on the overl
 2) Press Return(Enter) to move in a middle of the cell without a click
 3) Press Any of the main keyboard keys excluding two middle rows for a better precision inside the cell.
 
+There is also a double-triple click functionality.
+
 Also there are a few modificators:
 1) Holding ALT will use right click
 2) Holding Shift will allow you to select text.
