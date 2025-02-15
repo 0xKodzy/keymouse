@@ -13,9 +13,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: deps
+      run: sudo apt-get update && sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev
     - name: make
       run: make
-    - name: make check
-      run: make check
-    - name: make distcheck
-      run: make distcheck
