@@ -22,9 +22,12 @@
 #define SUBGRID_HEIGHT 3
 #define LETTERS "abcdefghijklmnopqrstuvwxyz"
 int subs[24] = { // Keyboard keys that allow for subgrid selection (better precision)
-    24, 25, 26, 27,   30, 31, 32, 33,
-    38, 39, 40, 41,   44, 45, 46, 47,
-    52, 53, 54, 55,   58, 59, 60, 61};
+    24, 25, 26, 27, 30, 31, 32, 33,
+    38, 39, 40, 41, 44, 45, 46, 47,
+    52, 53, 54, 55, 58, 59, 60, 61};
+
+int screen_width, screen_height;
+Window window;
 
 int SHIFT_MOD = 0;
 int CTRL_MOD = 0;
@@ -33,9 +36,11 @@ int shifted = 0;
 
 Display *dpy = NULL;
 int recent_timestamp = 0;
+int current_monitor = 0;
 
 void draw_grid(Display *display, Window window, int width, int height, XVisualInfo vinfo, XSetWindowAttributes attrs)
 {
+    fprintf(stderr, "Drawing grid %d %d\n", width, height);
     GC gc = XCreateGC(display, window, 0, NULL);
 
     GC sub_gc = XCreateGC(display, window, 0, NULL);
@@ -127,14 +132,36 @@ void draw_grid(Display *display, Window window, int width, int height, XVisualIn
     XFreeGC(display, sub_gc);
 }
 
+int change_monitor(int i, XRRMonitorInfo *m, int n)
+{
+    current_monitor = (current_monitor + i) % n;
+    if (current_monitor < 0)
+        current_monitor = n - 1;
+    screen_width = m[current_monitor].width;
+    screen_height = m[current_monitor].height;
+    fprintf(stderr, "Switching to monitor %d: %d %d %d %d\n",
+            current_monitor,
+            m[current_monitor].x,
+            m[current_monitor].y,
+            m[current_monitor].width,
+            m[current_monitor].height);
+    XMoveResizeWindow(dpy, window,
+                      m[current_monitor].x,
+                      m[current_monitor].y,
+                      screen_width,
+                      screen_height);
+    // XMoveWindow(dpy, window, -999, -999);
+    XClearWindow(dpy, window);
+    XRaiseWindow(dpy, window);
+    XSetInputFocus(dpy, window, RevertToPointerRoot, CurrentTime);
+}
+
 int main()
 {
     dpy = XOpenDisplay(NULL);
-    Window window;
     XEvent event;
     XSetWindowAttributes attrs;
     int screen;
-    int screen_width, screen_height;
 
     if (dpy == NULL)
     {
@@ -160,7 +187,6 @@ int main()
     if (!XQueryPointer(dpy, root, &dummy, &dummy, &di, &di, &nx, &ny, &dui))
         return 1;
 
-    int current_monitor = 0;
     for (int i = 0; i < n; i++)
     {
         fprintf(stderr, "Monitor %d: %d %d %d %d\n", i, m[i].x, m[i].y, m[i].width, m[i].height);
@@ -200,10 +226,10 @@ int main()
     attrs.border_pixel = 0;
 
     // Include CWColormap, CWBorderPixel, and CWBackPixmap in the mask.
-    unsigned long valuemask = CWColormap | CWBorderPixel | CWBackPixmap | CWEventMask;
+    unsigned long valuemask = CWOverrideRedirect | CWColormap | CWBorderPixel | CWBackPixmap | CWEventMask;
 
     // Create the window with the ARGB visual and depth.
-    window = XCreateWindow(dpy, root, 0, 0, screen_width, screen_height, 0,
+    window = XCreateWindow(dpy, root, m[current_monitor].x, m[current_monitor].y, screen_width, screen_height, 0,
                            vinfo.depth, InputOutput, vinfo.visual,
                            valuemask, &attrs);
 
@@ -238,11 +264,12 @@ int main()
                     PropModeReplace, (unsigned char *)&hints, 5);
 
     // Set window type to DOCK to hint a floating window
-    // Atom wm_window_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
+    Atom wm_window_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
     // Atom wm_window_type_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
-    // // Atom wm_window_type_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
-    // XChangeProperty(dpy, window, wm_window_type, XA_ATOM, 32, PropModeReplace,
-    //                 (unsigned char *)&wm_window_type_dock, 1);
+    // Atom wm_window_type_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
+    Atom wm_window_type_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_TOOLTIP", False);
+    XChangeProperty(dpy, window, wm_window_type, XA_ATOM, 32, PropModeReplace,
+                    (unsigned char *)&wm_window_type_dock, 1);
 
     // Request fullscreen and above status //NetWMWindowTypeDialog
     Atom wm_state = XInternAtom(dpy, "_NET_WM_STATE", False);
@@ -263,7 +290,9 @@ int main()
 
     XMapWindow(dpy, window);
     XFlush(dpy);
-    XDeleteProperty(dpy, window, XInternAtom(dpy, "WM_STATE", False));
+    // XDeleteProperty(dpy, window, XInternAtom(dpy, "WM_STATE", False));
+    XRaiseWindow(dpy, window);
+    XSetInputFocus(dpy, window, RevertToPointerRoot, CurrentTime);
 
     while (1)
     {
@@ -277,6 +306,7 @@ int main()
         }
         if (event.type == Expose)
         {
+            fprintf(stderr, "Expose event\n");
             XRenderColor bg = {0, 0, 0, 0.3 * 0xffff}; // red, green, blue = 0; alpha ≈20% opaque
             XRenderPictFormat *pictFormat = XRenderFindVisualFormat(dpy, vinfo.visual);
             Picture picture = XRenderCreatePicture(dpy, window, pictFormat, 0, NULL);
@@ -308,31 +338,15 @@ int main()
             if (key == XK_Control_L)
                 CTRL_MOD = 1;
 
-            if (key == XK_Alt_L)
-                ALT_MOD = 1;
-
-            if (key == XK_Left || key == XK_Up)
+            if (stage == 0 && key == XK_Left)
             {
-                fprintf(stderr, "monitor1: %d\n", current_monitor);
-                current_monitor = (current_monitor - 1 + n) % n;
-                fprintf(stderr, "monitor2: %d\n", current_monitor);
-                XMoveWindow(dpy, window, m[current_monitor].x, m[current_monitor].y);
-                fprintf(stderr, "x: %d y: %d\n", m[current_monitor].x, m[current_monitor].y);
-                screen_width = m[current_monitor].width;
-                screen_height = m[current_monitor].height;
-                // draw_grid(dpy, window, screen_width, screen_height, vinfo, attrs);
+                change_monitor(1, m, n);
                 continue;
             }
-            if (key == XK_Right || key == XK_Down)
+
+            if (stage == 0 && key == XK_Right)
             {
-                fprintf(stderr, "monitor1: %d\n", current_monitor);
-                current_monitor = (current_monitor + 1) % n;
-                fprintf(stderr, "monitor2: %d\n", current_monitor);
-                XMoveWindow(dpy, window, m[current_monitor].x, m[current_monitor].y);
-                fprintf(stderr, "x: %d y: %d\n", m[current_monitor].x, m[current_monitor].y);
-                screen_width = m[current_monitor].width;
-                screen_height = m[current_monitor].height;
-                // draw_grid(dpy, window, screen_width, screen_height, vinfo, attrs);
+                change_monitor(-1, m, n);
                 continue;
             }
 
@@ -397,6 +411,15 @@ int main()
                     XTestFakeButtonEvent(dpy, 3, True, CurrentTime);  // Button press
                     XTestFakeButtonEvent(dpy, 3, False, CurrentTime); // Button release
                     XMapWindow(dpy, window);
+                    if (shifted)
+                    {
+                        fprintf(stderr, "Shift key released2\n");
+                        XUnmapWindow(dpy, window);
+                        XTestFakeButtonEvent(dpy, 1, False, CurrentTime); // Button press
+                        XMapWindow(dpy, window);
+                        shifted = 0;
+                        break;
+                    }
                     break;
                 }
 
@@ -410,9 +433,9 @@ int main()
                     break;
                 }
 
-                if (SHIFT_MOD)
+                if (CTRL_MOD)
                 {
-                    fprintf(stderr, "Shift key pressed\n");
+                    fprintf(stderr, "CTRL key pressed\n");
                     XUnmapWindow(dpy, window);
                     XTestFakeButtonEvent(dpy, 1, True, CurrentTime); // Button press
                     XMapWindow(dpy, window);
