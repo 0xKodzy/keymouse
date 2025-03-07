@@ -5,7 +5,7 @@
 #include <X11/Xatom.h>
 #include <X11/extensions/XTest.h>
 #include <X11/extensions/Xrandr.h>
-#include <X11/extensions/Xrender.h> /* we share subpixel information */
+#include <X11/extensions/Xrender.h>
 #include <strings.h>
 #include <string.h>
 #include <stdlib.h>
@@ -27,7 +27,7 @@ int subs[24] = { // Keyboard keys that allow for subgrid selection (better preci
     52, 53, 54, 55, 58, 59, 60, 61};
 
 int screen_width, screen_height;
-Window window;
+Window win;
 
 int SHIFT_MOD = 0;
 int CTRL_MOD = 0;
@@ -38,17 +38,19 @@ Display *dpy = NULL;
 int recent_timestamp = 0;
 int current_monitor = 0;
 
+// Global variables to track the selected cell (-1 means “none”)
+int selected_row = -1;
+int selected_col = -1;
+
 void draw_grid(Display *display, Window window, int width, int height, XVisualInfo vinfo, XSetWindowAttributes attrs)
 {
     fprintf(stderr, "Drawing grid %d %d\n", width, height);
     GC gc = XCreateGC(display, window, 0, NULL);
-
     GC sub_gc = XCreateGC(display, window, 0, NULL);
-    // Setting line width to 1 for thinner lines.
     XSetLineAttributes(display, gc, 2, LineSolid, CapButt, JoinMiter);
     XSetLineAttributes(display, sub_gc, 1, LineSolid, CapButt, JoinMiter);
-    // Set a lighter grey for subgrid; adjust the color value if desired.
-    // Here, we create a color with RGB components that look lighter.
+
+    // Set up colors for the main grid and subgrid.
     XColor subColor;
     subColor.pixel = 0;
     subColor.red = 0xaaaa;
@@ -56,80 +58,84 @@ void draw_grid(Display *display, Window window, int width, int height, XVisualIn
     subColor.blue = 0xaaaa;
     subColor.flags = DoRed | DoGreen | DoBlue;
     XAllocColor(display, DefaultColormap(display, DefaultScreen(display)), &subColor);
-
     XSetForeground(display, sub_gc, subColor.pixel);
     XSetForeground(display, gc, WhitePixel(display, DefaultScreen(display)));
-    int i;
-    int j;
 
-    for (i = 0; i <= 26; i++)
-    {
-        int x = (int)((double)i * (width - 1) / 26.0 + 0.5);
-        for (j = 1; j <= 7; j++)
-        {
-            int _x = x + j * (width - 1) / 26 / 8;
-            // XDrawLine(display, window, sub_gc, _x, 0, _x, height - 1);
-        }
-        XDrawLine(display, window, gc, x, 0, x, height - 1);
-    }
-
-    // Draw horizontal lines similarly adjusted
-    for (i = 0; i <= 26; i++)
-    {
-        int y = (int)((double)i * (height - 1) / 26.0 + 0.5);
-        for (j = 1; j <= 2; j++)
-        {
-            int _y = y + j * (height - 1) / 26 / 3;
-            // XDrawLine(display, window, sub_gc, 0, _y, width - 1, _y);
-        }
-        XDrawLine(display, window, gc, 0, y, width - 1, y);
-    }
-
-    // Create an XftDraw for your window after it's mapped
+    // Create an XftDraw for text rendering.
     XftDraw *draw = XftDrawCreate(display, window, vinfo.visual, attrs.colormap);
     if (!draw)
     {
         fprintf(stderr, "Unable to create XftDraw\n");
         return;
     }
-
-    // Open a scalable font (the size is part of the font name)
     XftFont *xftFont = XftFontOpenName(display, DefaultScreen(dpy), "JetBrainsMonoNL NFP:size=12:style=Bold");
     if (!xftFont)
     {
-        fprintf(stderr, "Unable to load scalable font 'Sans-24'\n");
+        fprintf(stderr, "Unable to load scalable font\n");
         return;
     }
-
     XftColor color;
-    XRenderColor renderColor = {0xffff, 0xffff, 0xffff, 0xffff}; // White color
-    if (!XftColorAllocName(display, DefaultVisual(display, DefaultScreen(display)), DefaultColormap(display, DefaultScreen(display)), "white", &color))
+    if (!XftColorAllocName(display, DefaultVisual(display, DefaultScreen(display)),
+                           DefaultColormap(display, DefaultScreen(display)), "white", &color))
     {
         fprintf(stderr, "Unable to allocate color\n");
         return;
     }
 
-    double cellWidth = (double)(width) / GRID_SIZE;
-    double cellHeight = (double)(height) / GRID_SIZE;
+    double cellWidth = (double)width / GRID_SIZE;
+    double cellHeight = (double)height / GRID_SIZE;
+
+    // Loop over all grid cells.
     for (int row = 0; row < GRID_SIZE; row++)
     {
         for (int col = 0; col < GRID_SIZE; col++)
         {
-            char label[3] = {'A' + row, 'A' + col, '\0'};
             int x = col * cellWidth;
             int y = row * cellHeight;
-            XGlyphInfo extents;
-            XftTextExtents8(display, xftFont, (FcChar8 *)label, 2, &extents);
-            // Center the text horizontally and vertically using extents metrics.
-            int textX = x + (cellWidth - extents.width) / 2;
-            int textY = y + (cellHeight - (xftFont->ascent + xftFont->descent)) / 2 + xftFont->ascent;
-            XftDrawString8(draw, &color, xftFont, textX, textY, (FcChar8 *)label, 2);
+
+            // Check if this cell is the selected one.
+            if (row == selected_row && col == selected_col)
+            {
+                // Optionally, clear the cell background to remove any previous letters.
+                XSetForeground(display, gc, BlackPixel(display, DefaultScreen(display)));
+                XFillRectangle(display, window, gc, x, y, cellWidth, cellHeight);
+
+                // Draw the cell border.
+                XSetForeground(display, gc, WhitePixel(display, DefaultScreen(display)));
+                XDrawRectangle(display, window, gc, x, y, cellWidth, cellHeight);
+
+                // Draw subgrid lines inside the selected cell.
+                for (int i = 1; i < SUBGRID_WIDTH; i++)
+                {
+                    int sub_x = x + i * cellWidth / SUBGRID_WIDTH;
+                    XDrawLine(display, window, sub_gc, sub_x, y, sub_x, y + cellHeight);
+                }
+                for (int j = 1; j < SUBGRID_HEIGHT; j++)
+                {
+                    int sub_y = y + j * cellHeight / SUBGRID_HEIGHT;
+                    XDrawLine(display, window, sub_gc, x, sub_y, x + cellWidth, sub_y);
+                }
+            }
+            else
+            {
+                // Draw the standard grid cell border.
+                XDrawRectangle(display, window, gc, x, y, cellWidth, cellHeight);
+
+                // Draw the label (for example, "AB" where A and B are based on row and col)
+                char label[3] = {'A' + row, 'A' + col, '\0'};
+                XGlyphInfo extents;
+                XftTextExtents8(display, xftFont, (FcChar8 *)label, 2, &extents);
+                int textX = x + (cellWidth - extents.width) / 2;
+                int textY = y + (cellHeight - (xftFont->ascent + xftFont->descent)) / 2 + xftFont->ascent;
+                XftDrawString8(draw, &color, xftFont, textX, textY, (FcChar8 *)label, 2);
+            }
         }
     }
 
     XFlush(display);
     XFreeGC(display, gc);
     XFreeGC(display, sub_gc);
+    XftDrawDestroy(draw);
 }
 
 int change_monitor(int i, XRRMonitorInfo *m, int n)
@@ -137,29 +143,33 @@ int change_monitor(int i, XRRMonitorInfo *m, int n)
     current_monitor = (current_monitor + i) % n;
     if (current_monitor < 0)
         current_monitor = n - 1;
+    int x = m[current_monitor].x;
+    int y = m[current_monitor].y;
     screen_width = m[current_monitor].width;
     screen_height = m[current_monitor].height;
     fprintf(stderr, "Switching to monitor %d: %d %d %d %d\n",
             current_monitor,
-            m[current_monitor].x,
-            m[current_monitor].y,
+            x,
+            y,
             m[current_monitor].width,
             m[current_monitor].height);
-    XMoveResizeWindow(dpy, window,
-                      m[current_monitor].x,
-                      m[current_monitor].y,
+    XMoveResizeWindow(dpy, win,
+                      x,
+                      y,
                       screen_width,
                       screen_height);
     // XMoveWindow(dpy, window, -999, -999);
-    XClearWindow(dpy, window);
-    XRaiseWindow(dpy, window);
-    XSetInputFocus(dpy, window, RevertToPointerRoot, CurrentTime);
+    XClearWindow(dpy, win);
+    XRaiseWindow(dpy, win);
+    XSetInputFocus(dpy, win, RevertToPointerRoot, CurrentTime);
+
+    return 0;
 }
 
 int main()
 {
     dpy = XOpenDisplay(NULL);
-    XEvent event;
+    XEvent ev;
     XSetWindowAttributes attrs;
     int screen;
 
@@ -189,11 +199,12 @@ int main()
 
     for (int i = 0; i < n; i++)
     {
-        fprintf(stderr, "Monitor %d: %d %d %d %d\n", i, m[i].x, m[i].y, m[i].width, m[i].height);
-        if (nx >= m[i].x && nx <= m[i].x + m[i].width && ny >= m[i].y && ny <= m[i].y + m[i].height)
+        XRRMonitorInfo mon = m[i];
+        fprintf(stderr, "Monitor %d: %d %d %d %d\n", i, mon.x, mon.y, mon.width, mon.height);
+
+        if (nx >= mon.x && nx <= mon.x + mon.width && ny >= mon.y && ny <= mon.y + mon.height)
         {
             current_monitor = i;
-            break;
         }
     }
 
@@ -206,117 +217,96 @@ int main()
     fprintf(stderr, "Active Screen is %d\n", screen);
 
     attrs.override_redirect = True;
-    attrs.background_pixel = 0; // Transparent background
+    attrs.background_pixel = 0;
 
     fprintf(stderr, "Screen width: %d, Screen height: %d\n", screen_width, screen_height);
 
-    // Select an ARGB visual (32-bit) for transparency.
     XVisualInfo vinfo;
     if (!XMatchVisualInfo(dpy, screen, 32, TrueColor, &vinfo))
     {
         fprintf(stderr, "No ARGB visual found\n");
         return EXIT_FAILURE;
     }
-    // Create colormap for the ARGB visual.
     attrs.colormap = XCreateColormap(dpy, root, vinfo.visual, AllocNone);
 
-    // Set the border to 0 and use a transparent background pixmap.
-    attrs.background_pixmap = None; // fully transparent background
+    attrs.background_pixmap = None;
     attrs.event_mask = ExposureMask | KeyPressMask;
     attrs.border_pixel = 0;
 
-    // Include CWColormap, CWBorderPixel, and CWBackPixmap in the mask.
     unsigned long valuemask = CWOverrideRedirect | CWColormap | CWBorderPixel | CWBackPixmap | CWEventMask;
 
-    // Create the window with the ARGB visual and depth.
-    window = XCreateWindow(dpy, root, m[current_monitor].x, m[current_monitor].y, screen_width, screen_height, 0,
-                           vinfo.depth, InputOutput, vinfo.visual,
-                           valuemask, &attrs);
-
-    // window = XCreateSimpleWindow(display, DefaultRootWindow(display), 0, 0, WIDTH, HEIGHT, 1, BlackPixel(display, DefaultScreen(display)), BlackPixel(display, DefaultScreen(display)));
+    win = XCreateWindow(dpy, root, m[current_monitor].x, m[current_monitor].y, m[current_monitor].width, m[current_monitor].height, 0,
+                        vinfo.depth, InputOutput, vinfo.visual,
+                        valuemask, &attrs);
 
     Atom wmDelete = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
-    XSetWMProtocols(dpy, window, &wmDelete, 1);
+    XSetWMProtocols(dpy, win, &wmDelete, 1);
 
-    typedef struct
+    XWMHints *hints = XAllocWMHints();
+    if (hints)
     {
-        unsigned long flags;
-        unsigned long functions;
-        unsigned long decorations;
-        long inputMode;
-        unsigned long status;
-    } MotifWmHints;
+        hints->flags = InputHint;
+        hints->input = False;
+        XSetWMHints(dpy, win, hints);
+        XFree(hints);
+    }
 
-    MotifWmHints hints;
-    hints.flags = 2;       // MWM_HINTS_DECORATIONS
-    hints.decorations = 0; // 0 (no decorations)
-    hints.functions = 0;
-    hints.inputMode = 0;
-    hints.status = 0;
+    Atom wmWindowType = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
+    Atom utilityType = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_UTILITY", False);
+    XChangeProperty(dpy, win, wmWindowType, XA_ATOM, 32,
+                    PropModeReplace, (unsigned char *)&utilityType, 1);
 
-    XClassHint class_hint;
-    class_hint.res_name = "c-screen-overlay"; // instance name
-    class_hint.res_class = "super_overlay";   // class name
-    XSetClassHint(dpy, window, &class_hint);
-
-    Atom mwmHintsProperty = XInternAtom(dpy, "_MOTIF_WM_HINTS", False);
-    XChangeProperty(dpy, window, mwmHintsProperty, mwmHintsProperty, 32,
-                    PropModeReplace, (unsigned char *)&hints, 5);
-
-    // Set window type to DOCK to hint a floating window
-    Atom wm_window_type = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
-    // Atom wm_window_type_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DIALOG", False);
-    // Atom wm_window_type_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
-    Atom wm_window_type_dock = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE_TOOLTIP", False);
-    XChangeProperty(dpy, window, wm_window_type, XA_ATOM, 32, PropModeReplace,
-                    (unsigned char *)&wm_window_type_dock, 1);
-
-    // Request fullscreen and above status //NetWMWindowTypeDialog
-    Atom wm_state = XInternAtom(dpy, "_NET_WM_STATE", False);
+    Atom wmState = XInternAtom(dpy, "_NET_WM_STATE", False);
     Atom fullscreen = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
-    Atom above = XInternAtom(dpy, "_NET_WM_STATE_ABOVE", False);
-    Atom states[] = {fullscreen};
-    XChangeProperty(dpy, window, wm_state, XA_ATOM, 32, PropModeReplace,
-                    (unsigned char *)states, 1);
+    XChangeProperty(dpy, win, wmState, XA_ATOM, 32,
+                    PropModeReplace, (unsigned char *)&fullscreen, 1);
 
     unsigned long opacity = (unsigned long)(0.6 * 0xffffffffu);
     Atom netWmOpacity = XInternAtom(dpy, "_NET_WM_WINDOW_OPACITY", False);
-    XChangeProperty(dpy, window, netWmOpacity, XA_CARDINAL, 32, PropModeReplace,
+    XChangeProperty(dpy, win, netWmOpacity, XA_CARDINAL, 32, PropModeReplace,
                     (unsigned char *)&opacity, 1);
+
+    XMapWindow(dpy, win);
 
     int keys[2];
     int i = 0;
     int stage = 0;
 
-    XMapWindow(dpy, window);
-    XFlush(dpy);
-    // XDeleteProperty(dpy, window, XInternAtom(dpy, "WM_STATE", False));
-    XRaiseWindow(dpy, window);
-    XSetInputFocus(dpy, window, RevertToPointerRoot, CurrentTime);
+    int keycode = XKeysymToKeycode(dpy, XK_F1);
+    XGrabKey(dpy, keycode, AnyModifier, root, True, GrabModeAsync, GrabModeAsync);
+
+    XGrabKeyboard(dpy, root, True, GrabModeAsync, GrabModeAsync, CurrentTime);
+    usleep(150000);
+    int grabResult = XGrabKeyboard(dpy, root, True, GrabModeAsync, GrabModeAsync, CurrentTime);
+
+    if (grabResult != GrabSuccess)
+    {
+        fprintf(stderr, "Failed to grab the keyboard\n");
+        XCloseDisplay(dpy);
+        return EXIT_FAILURE;
+    }
 
     while (1)
     {
-        fprintf(stderr, "Waiting for event\n");
-        XNextEvent(dpy, &event);
-        if (event.type == ClientMessage &&
-            (Atom)event.xclient.data.l[0] == wmDelete)
+        XNextEvent(dpy, &ev);
+        if (ev.type == ClientMessage &&
+            (Atom)ev.xclient.data.l[0] == wmDelete)
         {
             fprintf(stderr, "Exiting\n");
             break;
         }
-        if (event.type == Expose)
+        if (ev.type == Expose)
         {
-            fprintf(stderr, "Expose event\n");
             XRenderColor bg = {0, 0, 0, 0.3 * 0xffff}; // red, green, blue = 0; alpha ≈20% opaque
             XRenderPictFormat *pictFormat = XRenderFindVisualFormat(dpy, vinfo.visual);
-            Picture picture = XRenderCreatePicture(dpy, window, pictFormat, 0, NULL);
+            Picture picture = XRenderCreatePicture(dpy, win, pictFormat, 0, NULL);
             XRenderFillRectangle(dpy, PictOpSrc, picture, &bg, 0, 0, screen_width, screen_height);
             XRenderFreePicture(dpy, picture);
-            draw_grid(dpy, window, screen_width, screen_height, vinfo, attrs);
+            draw_grid(dpy, win, screen_width, screen_height, vinfo, attrs);
         }
-        if (event.type == KeyRelease)
+        if (ev.type == KeyRelease)
         {
-            KeySym key = XLookupKeysym(&event.xkey, 0);
+            KeySym key = XLookupKeysym(&ev.xkey, 0);
             if (key == XK_Shift_L)
                 SHIFT_MOD = 0;
 
@@ -326,9 +316,9 @@ int main()
             if (key == XK_Alt_L)
                 ALT_MOD = 0;
         }
-        if (event.type == KeyPress)
+        if (ev.type == KeyPress)
         {
-            KeySym key = XLookupKeysym(&event.xkey, 0);
+            KeySym key = XLookupKeysym(&ev.xkey, 0);
             if (key == XK_Escape)
                 break;
 
@@ -337,6 +327,9 @@ int main()
 
             if (key == XK_Control_L)
                 CTRL_MOD = 1;
+
+            if (key == XK_Alt_L)
+                ALT_MOD = 1;
 
             if (stage == 0 && key == XK_Left)
             {
@@ -350,7 +343,7 @@ int main()
                 continue;
             }
 
-            fprintf(stderr, "Key: %s Code: %d %ld\n", XKeysymToString(key), event.xkey.keycode, key);
+            fprintf(stderr, "Key: %s Code: %d %ld\n", XKeysymToString(key), ev.xkey.keycode, key);
 
             if (stage == 1)
             {
@@ -366,7 +359,7 @@ int main()
 
                 int prev_key = 0;
 
-                if (event.xkey.keycode == 65)
+                if (ev.xkey.keycode == 65)
                 {
                     prev_key = 65;
                     XWarpPointer(dpy, None, root, 0, 0, 0, 0, x + (screen_width - 1) / 26 / 2, y + (screen_height - 1) / 26 / 2);
@@ -379,7 +372,7 @@ int main()
                     int num = 0;
                     for (int k = 0; k < 24; k++)
                     {
-                        if (subs[k] == event.xkey.keycode)
+                        if (subs[k] == ev.xkey.keycode)
                         {
                             found = 1;
                             num = k;
@@ -407,16 +400,16 @@ int main()
                 if (ALT_MOD)
                 {
                     fprintf(stderr, "Alt key pressed\n");
-                    XUnmapWindow(dpy, window);
+                    XUnmapWindow(dpy, win);
                     XTestFakeButtonEvent(dpy, 3, True, CurrentTime);  // Button press
                     XTestFakeButtonEvent(dpy, 3, False, CurrentTime); // Button release
-                    XMapWindow(dpy, window);
+                    XMapWindow(dpy, win);
                     if (shifted)
                     {
                         fprintf(stderr, "Shift key released2\n");
-                        XUnmapWindow(dpy, window);
+                        XUnmapWindow(dpy, win);
                         XTestFakeButtonEvent(dpy, 1, False, CurrentTime); // Button press
-                        XMapWindow(dpy, window);
+                        XMapWindow(dpy, win);
                         shifted = 0;
                         break;
                     }
@@ -426,9 +419,9 @@ int main()
                 if (shifted)
                 {
                     fprintf(stderr, "Shift key released\n");
-                    XUnmapWindow(dpy, window);
+                    XUnmapWindow(dpy, win);
                     XTestFakeButtonEvent(dpy, 1, False, CurrentTime); // Button press
-                    XMapWindow(dpy, window);
+                    XMapWindow(dpy, win);
                     shifted = 0;
                     break;
                 }
@@ -436,9 +429,9 @@ int main()
                 if (CTRL_MOD)
                 {
                     fprintf(stderr, "CTRL key pressed\n");
-                    XUnmapWindow(dpy, window);
+                    XUnmapWindow(dpy, win);
                     XTestFakeButtonEvent(dpy, 1, True, CurrentTime); // Button press
-                    XMapWindow(dpy, window);
+                    XMapWindow(dpy, win);
                     stage = 0;
                     shifted = 1;
                     i = 0;
@@ -450,10 +443,10 @@ int main()
                 gettimeofday(&tv, NULL);
 
                 int loops = 0;
-                XUnmapWindow(dpy, window);
+                XUnmapWindow(dpy, win);
                 XTestFakeButtonEvent(dpy, 1, True, CurrentTime);  // Button press
                 XTestFakeButtonEvent(dpy, 1, False, CurrentTime); // Button release
-                XMapWindow(dpy, window);
+                XMapWindow(dpy, win);
                 while (1)
                 {
                     XEvent event;
@@ -466,10 +459,10 @@ int main()
                         if (event.type == KeyPress && event.xkey.keycode == prev_key)
                         {
                             fprintf(stderr, "Key pressed\n");
-                            XUnmapWindow(dpy, window);
+                            XUnmapWindow(dpy, win);
                             XTestFakeButtonEvent(dpy, 1, True, CurrentTime);  // Button press
                             XTestFakeButtonEvent(dpy, 1, False, CurrentTime); // Button release
-                            XMapWindow(dpy, window);
+                            XMapWindow(dpy, win);
 
                             if (++loops == 2)
                                 break;
@@ -493,6 +486,11 @@ int main()
                 if (i == 2)
                 {
                     fprintf(stderr, "Keys: %d %d\n", keys[0], keys[1]);
+                    selected_row = keys[0];
+                    selected_col = keys[1];
+                    XClearWindow(dpy, win);
+                    draw_grid(dpy, win, screen_width, screen_height, vinfo, attrs);
+                    
                     stage = 1;
                 }
             }
