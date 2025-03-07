@@ -21,3 +21,10 @@ Also there are a few modificators:
 1) Holding ALT will use right click
 2) Holding Shift will allow you to select text.
 3) CTRL modificator is unused for now.
+
+# Build
+git clone https://github.com/0xKodzy/keymouse.git
+cd ./keymouse
+make
+
+Executable will be named "overlay".
