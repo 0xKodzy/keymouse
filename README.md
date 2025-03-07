@@ -23,10 +23,8 @@ Also there are a few modificators:
 3) CTRL modificator is unused for now.
 
 # Build
-git clone https://github.com/0xKodzy/keymouse.git
-
-cd ./keymouse
-
-make
+`git clone https://github.com/0xKodzy/keymouse.git` <br>
+`cd ./keymouse` <br>
+`make`
 
 Executable will be named "overlay".
