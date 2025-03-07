@@ -24,7 +24,9 @@ Also there are a few modificators:
 
 # Build
 git clone https://github.com/0xKodzy/keymouse.git
+
 cd ./keymouse
+
 make
 
 Executable will be named "overlay".
