@@ -12,7 +12,6 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <stdarg.h>
-#include <math.h>
 #include <unistd.h>
 #include <X11/Xft/Xft.h>
 #include <sys/time.h>
@@ -297,7 +296,7 @@ int main()
         }
         if (ev.type == Expose)
         {
-            XRenderColor bg = {0, 0, 0, 0.3 * 0xffff}; // red, green, blue = 0; alpha ≈20% opaque
+            XRenderColor bg = {0, 0, 0, 0.4 * 0xffff}; // red, green, blue = 0; alpha ≈20% opaque
             XRenderPictFormat *pictFormat = XRenderFindVisualFormat(dpy, vinfo.visual);
             Picture picture = XRenderCreatePicture(dpy, win, pictFormat, 0, NULL);
             XRenderFillRectangle(dpy, PictOpSrc, picture, &bg, 0, 0, screen_width, screen_height);
@@ -490,7 +489,7 @@ int main()
                     selected_col = keys[1];
                     XClearWindow(dpy, win);
                     draw_grid(dpy, win, screen_width, screen_height, vinfo, attrs);
-                    
+
                     stage = 1;
                 }
             }

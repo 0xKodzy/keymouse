@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -g $(shell pkg-config --cflags x11 freetype2 xft)
 LDFLAGS = $(shell pkg-config --libs x11 xrandr freetype2 xft) -lXtst -lXrender
-TARGET = overlay
+TARGET = keymouse
 SRC = main.c
 OBJ = $(SRC:.c=.o)
 
