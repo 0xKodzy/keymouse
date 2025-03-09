@@ -6,6 +6,9 @@ It is in a somewhat active development.
 
 Personally, I have never used ".c" language before in my life, so most of the code came from AI-helpers.
 
+# Compatibility
+Linux + X11 + compositor like picom
+
 # Pictures
 ![keymouse](https://github.com/user-attachments/assets/4346a612-cee6-42c6-9b94-5998d121ba7b)
 
