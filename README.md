@@ -21,9 +21,9 @@ You can move your mouse by typing one of the letter pairs displayed on the overl
 There is also a double-triple click functionality.
 
 Also there are a few modificators:
-1) Holding ALT will use right click
-2) Holding Shift will allow you to select text.
-3) CTRL modificator is unused for now.
+1) Holding Alt will use right click
+2) Holding Ctrl will allow you to select text.
+3) Shift modificator is unused for now.
 
 # Build
 `git clone https://github.com/0xKodzy/keymouse.git` <br>
