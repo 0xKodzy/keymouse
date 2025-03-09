@@ -30,4 +30,4 @@ Also there are a few modificators:
 `cd ./keymouse` <br>
 `make`
 
-Executable will be named "overlay".
+Executable will be named "keymouse".
